@@ -42,6 +42,7 @@ class RunCommand(threading.Thread):
         files_lock.release()
         files_updated.set()
     def run(self):
+        global keep_processing
         while keep_processing:
             # Check whether there are any files to process.
             did_scan = False
@@ -74,7 +75,16 @@ class RunCommand(threading.Thread):
             print("Processing file:", filename)
             print_lock.release()
             # Spawn the command and wait for it to complete.
-            subprocess.Popen(command + [os.path.join(args_parsed.directory, filename)], creationflags=subprocess.CREATE_NEW_CONSOLE).wait()
+            try:
+                subprocess.Popen(command + [os.path.join(args_parsed.directory, filename)], creationflags=subprocess.CREATE_NEW_CONSOLE).wait()
+            except FileNotFoundError:
+                keep_processing = False
+                self.files_lock_acquire()
+                files_to_process.clear()
+                self.files_lock_release()
+                print_lock.acquire()
+                print("Error: While executing the command, the file could not be found.")
+                print_lock.release()
 if os.path.isdir(args_parsed.directory):
     # Create a list of args_parsed.max_concurrent threads.
     print("Starting monitoring threads...")
