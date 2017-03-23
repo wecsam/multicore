@@ -100,7 +100,7 @@ if os.path.isdir(args_parsed.directory):
             files_updated.clear()
             # Update the list of threads to exclude threads that have exited.
             threads = [thread for thread in threads if thread.is_alive()]
-            # Get and print the number of files to process.
+            # Get the number of files to process.
             files_lock.acquire()
             len_files_to_process = len(files_to_process)
             files_lock.release()
