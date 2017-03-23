@@ -89,31 +89,34 @@ if os.path.isdir(args_parsed.directory):
     # Create a list of args_parsed.max_concurrent threads.
     print("Starting monitoring threads...")
     threads = [RunCommand() for i in range(args_parsed.max_concurrent)]
-    # Start the threads.
-    for thread in threads:
-        thread.start()
-    # When the file sets are updated, check whether any threads have exited.
-    while keep_processing:
-        # Wait for the file sets to be updated.
-        files_updated.wait()
-        files_updated.clear()
-        # Update the list of threads to exclude threads that have exited.
-        threads = [thread for thread in threads if thread.is_alive()]
-        # Get and print the number of files to process.
-        files_lock.acquire()
-        len_files_to_process = len(files_to_process)
-        files_lock.release()
-        # If there are files to process, start new threads.
-        if len_files_to_process:
-            # If there are already args_parsed.max_concurrent threads
-            # running, then the following range is empty and the loop
-            # is skipped.
-            for i in range(len(threads), args_parsed.max_concurrent):
-                thread = RunCommand()
-                thread.start()
-                threads.append(thread)
-        elif not threads:
-            # If there are no threads running, then exit.
-            break
+    if threads:
+        # Start the threads.
+        for thread in threads:
+            thread.start()
+        # When the file sets are updated, check whether any threads have exited.
+        while keep_processing:
+            # Wait for the file sets to be updated.
+            files_updated.wait()
+            files_updated.clear()
+            # Update the list of threads to exclude threads that have exited.
+            threads = [thread for thread in threads if thread.is_alive()]
+            # Get and print the number of files to process.
+            files_lock.acquire()
+            len_files_to_process = len(files_to_process)
+            files_lock.release()
+            # If there are files to process, start new threads.
+            if len_files_to_process:
+                # If there are already args_parsed.max_concurrent threads
+                # running, then the following range is empty and the loop
+                # is skipped.
+                for i in range(len(threads), args_parsed.max_concurrent):
+                    thread = RunCommand()
+                    thread.start()
+                    threads.append(thread)
+            elif not threads:
+                # If there are no threads running, then exit.
+                break
+    else:
+        print("Error: For --max-concurrent, the value must be at least 1.")
 else:
     print("Error:", args_parsed.directory, "is not a directory.")
