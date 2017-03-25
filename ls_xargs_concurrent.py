@@ -104,10 +104,18 @@ if os.path.isdir(args_parsed.directory):
             try:
                 with open(files_processed_pickle_path, "rb") as f:
                     files_processed = unpickle_safe(f, safe_return=set(), error_msg="Warning: pickle file is corrupted!")
-                # Save a backup of the pickle file.
-                os.rename(files_processed_pickle_path, files_processed_pickle_path + ".bak")
-            except OSError:
+            except OSError as e:
                 print("Warning: cannot open pickle file for reading!")
+                print(e)
+            try:
+                # Save a backup of the pickle file.
+                files_processed_pickle_path_bak = files_processed_pickle_path + ".bak"
+                if(os.path.isfile(files_processed_pickle_path_bak)):
+                    os.remove(files_processed_pickle_path_bak)
+                os.rename(files_processed_pickle_path, files_processed_pickle_path_bak)
+            except OSError as e:
+                print("Warning: unable to save backup of pickle file!")
+                print(e)
         # Prevent the running of the command on the pickle file.
         files_processed.add(FILES_PROCESSED_PICKLE_FILENAME)
         files_processed.add(FILES_PROCESSED_PICKLE_FILENAME + ".bak")
