@@ -40,34 +40,35 @@ class RunCommand(threading.Thread):
         while keep_processing:
             # Check whether there are any files to process.
             did_scan = False
-            self.files_lock_acquire()
-            if not files_to_process:
-                did_scan = True
-                # There are no files to process! Scan the folder for any new
-                # files that may have appeared since the last scan.
-                files_to_process.update(set(filter(
-                    lambda filename: os.path.isfile(os.path.join(args_parsed.directory, filename)),
-                    os.listdir(args_parsed.directory)
-                )) - files_processed)
-                # If there are no more files to process, then exit this thread.
-                # There is no need to tell other threads that there are no more
-                # files because new files could be added by the time that they
-                # finish. The main thread is responsible for starting another
-                # thread if more files are added after this thread has exited.
+            try:
+                self.files_lock_acquire()
                 if not files_to_process:
-                    self.files_lock_release()
-                    break
-            # Get one item to process and add it to the set of files that have
-            # been processed.
-            filename = files_to_process.pop()
-            files_processed.add(filename)
-            self.files_lock_release()
+                    did_scan = True
+                    # There are no files to process! Scan the folder for any new
+                    # files that may have appeared since the last scan.
+                    files_to_process.update(set(filter(
+                        lambda filename: os.path.isfile(os.path.join(args_parsed.directory, filename)),
+                        os.listdir(args_parsed.directory)
+                    )) - files_processed)
+                    # If there are no more files to process, then exit this thread.
+                    # There is no need to tell other threads that there are no more
+                    # files because new files could be added by the time that they
+                    # finish. The main thread is responsible for starting another
+                    # thread if more files are added after this thread has exited.
+                    if not files_to_process:
+                        self.files_lock_release()
+                        break
+                # Get one item to process and add it to the set of files that have
+                # been processed.
+                filename = files_to_process.pop()
+                files_processed.add(filename)
+            finally:
+                self.files_lock_release()
             # Print the filename.
-            print_lock.acquire()
-            if did_scan:
-                print("Scanned for new files.")
-            print("Processing file:", filename)
-            print_lock.release()
+            with print_lock:
+                if did_scan:
+                    print("Scanned for new files.")
+                print("Processing file:", filename)
             # Spawn the command and wait for it to complete.
             try:
                 subprocess.Popen(command + [os.path.join(args_parsed.directory, filename)], creationflags=subprocess.CREATE_NEW_CONSOLE).wait()
@@ -76,9 +77,8 @@ class RunCommand(threading.Thread):
                 self.files_lock_acquire()
                 files_to_process.clear()
                 self.files_lock_release()
-                print_lock.acquire()
-                print("Error: While executing the command, the file could not be found.")
-                print_lock.release()
+                with print_lock:
+                    print("Error: While executing the command, the file could not be found.")
 # Read command line arguments.
 arg_parser = argparse.ArgumentParser(
     description="Runs a command on all files in a folder. The file path is appended to the command. Commands are spawned in new console windows. Up to MAX_CONCURRENT instances of the command can run at the same time. If a file is created before the script exits, then it will also be processed."
@@ -130,18 +130,22 @@ if os.path.isdir(args_parsed.directory):
             files_updated.clear()
             # Update the list of threads to exclude threads that have exited.
             threads = [thread for thread in threads if thread.is_alive()]
-            # Get the number of files to process.
-            files_lock.acquire()
-            len_files_to_process = len(files_to_process)
-            # If the user specified the --pickle option, dump files_processed to the pickle file.
-            if args_parsed.pickle:
-                try:
-                    with open(files_processed_pickle_path, "wb") as f:
-                        pickle.dump(files_processed, f)
-                except OSError:
-                    # Risk some badly-formatted output; don't acquire the print lock.
+            # Do stuff with the file lists.
+            pickle_error = None
+            with files_lock:
+                # Get the number of files to process.
+                len_files_to_process = len(files_to_process)
+                # If the user specified the --pickle option, dump files_processed to the pickle file.
+                if args_parsed.pickle:
+                    try:
+                        with open(files_processed_pickle_path, "wb") as f:
+                            pickle.dump(files_processed, f)
+                    except OSError as e:
+                        pickle_error = e
+            if pickle_error is not None:
+                with print_lock:
                     print("Warning: cannot open pickle file for writing!")
-            files_lock.release()
+                    print(pickle_error)
             # If there are files to process, start new threads.
             if len_files_to_process:
                 # If there are already args_parsed.max_concurrent threads
