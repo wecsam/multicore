@@ -3,26 +3,20 @@
 # The file path is passed as the first argument.
 # Up to args_parsed.max_concurrent instances can be running at the same time.
 # If a file is created before the script exits, then it will also be processed.
-import argparse, os, shlex, signal, subprocess, threading
-arg_parser = argparse.ArgumentParser(
-    description="Runs a command on all files in a folder. The file path is appended to the command. Commands are spawned in new console windows. Up to MAX_CONCURRENT instances of the command can run at the same time. If a file is created before the script exits, then it will also be processed."
-)
-arg_parser.add_argument("directory", help="the directory whose files will be passed to the command")
-arg_parser.add_argument("command", help="the command to which each file path will be appended")
-arg_parser.add_argument("-n", "--max-concurrent", type=int, default=4, help="up to this number of instances of the command will be running at the same time")
-args_parsed = arg_parser.parse_args()
-command = shlex.split(args_parsed.command, posix=(os.name == "posix"))
-# Keep track of the files to process and the files that have been processed.
-# These sets should hold filenames as strings.
-# We also need a lock for the two sets.
-files_lock = threading.Lock()
-files_to_process = set()
-files_processed = set()
-# This event should be set when files_to_process is updated. It lets the
-# main thread start up new threads if necessary.
-files_updated = threading.Event()
-# Also have a lock for printing to stdout.
-print_lock = threading.Lock()
+import argparse, os, pickle, shlex, signal, subprocess, threading
+from _pickle import UnpicklingError
+FILES_PROCESSED_PICKLE_FILENAME = "ls_xargs_concurrent_files_processed.pickle"
+def unpickle_safe(*args, safe_return, error_msg=None, **kwargs):
+    '''
+    Calls pickle.load, but if UnpicklingError or EOFError is thrown, returns safe_return.
+    '''
+    try:
+        result = pickle.load(*args, **kwargs)
+    except (UnpicklingError, EOFError):
+        if error_msg is not None:
+            print(error_msg)
+        return safe_return
+    return result
 # Trap the interrupt signal so that it can terminate all threads.
 keep_processing = True
 def discontinue_processing(signal, frame):
@@ -85,7 +79,43 @@ class RunCommand(threading.Thread):
                 print_lock.acquire()
                 print("Error: While executing the command, the file could not be found.")
                 print_lock.release()
+# Read command line arguments.
+arg_parser = argparse.ArgumentParser(
+    description="Runs a command on all files in a folder. The file path is appended to the command. Commands are spawned in new console windows. Up to MAX_CONCURRENT instances of the command can run at the same time. If a file is created before the script exits, then it will also be processed."
+)
+arg_parser.add_argument("directory", help="the directory whose files will be passed to the command")
+arg_parser.add_argument("command", help="the command to which each file path will be appended")
+arg_parser.add_argument("-n", "--max-concurrent", type=int, default=4, help="up to this number of instances of the command will be running at the same time")
+arg_parser.add_argument("-p", "--pickle", action="store_true", help="load and save the set of the files already processed in a Python pickle in the same directory as the files")
+args_parsed = arg_parser.parse_args()
+command = shlex.split(args_parsed.command, posix=False)
 if os.path.isdir(args_parsed.directory):
+    # Keep track of the files to process and the files that have been processed.
+    # These sets should hold filenames as strings.
+    # We also need a lock for the two sets.
+    files_lock = threading.Lock()
+    files_to_process = set()
+    files_processed = set()
+    # If the user added the --pickle option and the pickle file exists, read files_processed from it.
+    if args_parsed.pickle:
+        print("Reading pickle file...")
+        files_processed_pickle_path = os.path.join(args_parsed.directory, FILES_PROCESSED_PICKLE_FILENAME)
+        if os.path.isfile(files_processed_pickle_path):
+            try:
+                with open(files_processed_pickle_path, "rb") as f:
+                    files_processed = unpickle_safe(f, safe_return=set(), error_msg="Warning: pickle file is corrupted!")
+                # Save a backup of the pickle file.
+                os.rename(files_processed_pickle_path, files_processed_pickle_path + ".bak")
+            except OSError:
+                print("Warning: cannot open pickle file for reading!")
+        # Prevent the running of the command on the pickle file.
+        files_processed.add(FILES_PROCESSED_PICKLE_FILENAME)
+        files_processed.add(FILES_PROCESSED_PICKLE_FILENAME + ".bak")
+    # This event should be set when files_to_process is updated. It lets the
+    # main thread start up new threads if necessary.
+    files_updated = threading.Event()
+    # Also have a lock for printing to stdout.
+    print_lock = threading.Lock()
     # Create a list of args_parsed.max_concurrent threads.
     print("Starting monitoring threads...")
     threads = [RunCommand() for i in range(args_parsed.max_concurrent)]
@@ -103,6 +133,14 @@ if os.path.isdir(args_parsed.directory):
             # Get the number of files to process.
             files_lock.acquire()
             len_files_to_process = len(files_to_process)
+            # If the user specified the --pickle option, dump files_processed to the pickle file.
+            if args_parsed.pickle:
+                try:
+                    with open(files_processed_pickle_path, "wb") as f:
+                        pickle.dump(files_processed, f)
+                except OSError:
+                    # Risk some badly-formatted output; don't acquire the print lock.
+                    print("Warning: cannot open pickle file for writing!")
             files_lock.release()
             # If there are files to process, start new threads.
             if len_files_to_process:
