@@ -40,8 +40,8 @@ class RunCommand(threading.Thread):
         while keep_processing:
             # Check whether there are any files to process.
             did_scan = False
+            self.files_lock_acquire()
             try:
-                self.files_lock_acquire()
                 if not files_to_process:
                     did_scan = True
                     # There are no files to process! Scan the folder for any new
@@ -56,7 +56,6 @@ class RunCommand(threading.Thread):
                     # finish. The main thread is responsible for starting another
                     # thread if more files are added after this thread has exited.
                     if not files_to_process:
-                        self.files_lock_release()
                         break
                 # Get one item to process and add it to the set of files that have
                 # been processed.
