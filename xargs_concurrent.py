@@ -3,13 +3,15 @@ import argparse, collections, json, multiprocessing.pool, os, shlex, subprocess,
 
 processes = None
 command = None
+creationflags = subprocess.CREATE_NEW_CONSOLE
 
 def parse_arguments():
-    global processes, command
+    global command, creationflags, processes
     parser = argparse.ArgumentParser(
         usage="%(prog)s [--num-processes=N] command [initial options]"
     )
     parser.add_argument("--num-processes", type=int, default=os.cpu_count())
+    parser.add_argument("--no-new-console", action="store_true")
     # Find the first argument (besides sys.argv[0]) that does not start with a hyphen.
     try:
         command_start = 1
@@ -21,12 +23,17 @@ def parse_arguments():
         sys.exit()
     else:
         command = sys.argv[command_start:]
+    # Parse the arguments that were meant for this script (and not each subprocess).
+    parsed = parser.parse_args(sys.argv[1:command_start])
     # Find the number of processes.
-    processes = parser.parse_args(sys.argv[1:command_start]).num_processes
+    processes = parsed.num_processes
+    # Check whether we should open a new console window for each subprocess.
+    if parsed.no_new_console:
+        creationflags = 0
 
 def start_command(command_arg):
-    global command
-    return subprocess.Popen(command + shlex.split(command_arg), creationflags=subprocess.CREATE_NEW_CONSOLE).wait()
+    global command, creationflags
+    return subprocess.Popen(command + shlex.split(command_arg), creationflags=creationflags).wait()
 
 if __name__ == "__main__":
     parse_arguments()
