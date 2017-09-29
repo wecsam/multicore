@@ -8,10 +8,30 @@ creationflags = subprocess.CREATE_NEW_CONSOLE
 def parse_arguments():
     global command, creationflags, processes
     parser = argparse.ArgumentParser(
-        usage="%(prog)s [--num-processes=N] command [initial options]"
+        description=
+            "This script takes each line in standard input, appends it to the "
+            "specified command, and runs it. Once all commands have completed, "
+            "the number of occurrences of each return value is printed in JSON "
+            "format.",
+        usage="%(prog)s [--num-processes=N] [--no-new-console] command [initial options]"
     )
-    parser.add_argument("--num-processes", type=int, default=os.cpu_count())
-    parser.add_argument("--no-new-console", action="store_true")
+    parser.add_argument(
+        "--num-processes",
+        type=int,
+        default=os.cpu_count(),
+        metavar="",
+        help=
+            "By default, the number of parallel processes that are spawned how "
+            "many parallel processes to spawn is limited to the number of CPUs "
+            "of the computer. Use this switch to override this number."
+    )
+    parser.add_argument(
+        "--no-new-console",
+        action="store_true",
+        help=
+            "By default, each command is spawned in its own window. Specify this "
+            "switch to use only this console window."
+    )
     # Find the first argument (besides sys.argv[0]) that does not start with a hyphen.
     try:
         command_start = 1
