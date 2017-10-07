@@ -12,44 +12,40 @@ def parse_arguments():
             "This script takes each line in standard input, appends it to the "
             "specified command, and runs it. Once all commands have completed, "
             "the number of occurrences of each return value is printed in JSON "
-            "format.",
-        usage="%(prog)s [--num-processes=N] [--no-new-console] command [initial options]"
+            "format."
     )
     parser.add_argument(
-        "--num-processes",
+        "--num-processes", "-n",
         type=int,
         default=os.cpu_count(),
-        metavar="",
+        metavar="N",
         help=
             "By default, the number of parallel processes that are spawned how "
             "many parallel processes to spawn is limited to the number of CPUs "
             "of the computer. Use this switch to override this number."
     )
     parser.add_argument(
-        "--no-new-console",
+        "--no-new-console", "-p",
         action="store_true",
         help=
             "By default, each command is spawned in its own window. Specify this "
             "switch to use only this console window."
     )
-    # Find the first argument (besides sys.argv[0]) that does not start with a hyphen.
-    try:
-        command_start = 1
-        while sys.argv[command_start][0:1] == "-":
-            command_start += 1
-    except IndexError:
-        print("Error: no command was found.")
-        parser.print_help()
-        sys.exit()
-    else:
-        command = sys.argv[command_start:]
-    # Parse the arguments that were meant for this script (and not each subprocess).
-    parsed = parser.parse_args(sys.argv[1:command_start])
-    # Find the number of processes.
+    parser.add_argument(
+        "command",
+        nargs=argparse.REMAINDER,
+        help=
+            "Specify the command to run and its initial arguments. Each line in "
+            "standard input is appended to this text, and the whole string is "
+            "treated as the command."
+    )
+    parsed = parser.parse_args()
     processes = parsed.num_processes
-    # Check whether we should open a new console window for each subprocess.
     if parsed.no_new_console:
         creationflags = 0
+    command = parsed.command
+    if not len(command):
+        parser.error("no command was specified")
 
 def start_command(command_arg):
     global command, creationflags
