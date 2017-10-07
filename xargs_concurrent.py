@@ -53,10 +53,15 @@ def start_command(command_arg):
 
 if __name__ == "__main__":
     parse_arguments()
-    with multiprocessing.pool.ThreadPool(processes) as pool:
+    try:
+        with multiprocessing.pool.ThreadPool(processes) as pool:
+            return_value_counts = collections.Counter(pool.imap_unordered(start_command, sys.stdin))
+    except OSError as e:
+        print(e)
+    else:
         # Print a JSON object of the number of times that each return value occurred.
         json.dump(
-            collections.Counter(pool.imap_unordered(start_command, sys.stdin)),
+            return_value_counts,
             sys.stdout,
             sort_keys=True,
             indent=4,
